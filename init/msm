@@ -1068,6 +1068,33 @@ jargroup_changeurl() {
 	fi
 }
 
+# Use an embedded python heredoc to parse json and get the appropriate server jar
+# $1: either release or snapshot 
+# TODO: Allow ANY version to be passed
+
+jargroup_getServerJarUrl() {
+printf $(python  <<EOF
+import json
+import urllib
+import sys 
+
+url = 'https://launchermeta.mojang.com/mc/game/version_manifest.json'
+r = urllib.urlopen(url) 
+f = json.loads(r.read())
+id = f['latest']['$1']
+url = None
+for o in f['versions']:
+    if o['id'] == id: 
+        url = o['url']
+
+if url:
+    r = urllib.urlopen(url)
+    f = json.loads(r.read())
+    print f['downloads']['server']['url'] 
+EOF
+)
+}
+
 # Downloads the latest version for a jargroup, using the target URL for that
 # group. Saves the download with the date and time encoded in the start of the
 # file name, in the jar group directory in question. Removes the file if there
@@ -1108,12 +1135,9 @@ jargroup_getlatest() {
                         local versions_target="snapshot"
                     fi
                     printf "Checking minecraft version JSON... "
-                    local versions_url="http://s3.amazonaws.com/Minecraft.Download/versions/versions.json"
-                    local versions_file="/tmp/minecraft_versions.json"
-                    as_user "$SETTINGS_USERNAME" "wget --quiet $wget_opts --no-check-certificate -O '$versions_file' '$versions_url'"
-                    local latest_version=$(as_user "$SETTINGS_USERNAME" "sed -n '/"latest"/,/}/p' $versions_file | grep $versions_target | egrep -o '([0-9]+\.?)+|([0-9]+[a-zA-Z])+'")
-                    if [[ -n "$latest_version" ]]; then
-                        local jar_url="https://s3.amazonaws.com/Minecraft.Download/versions/$latest_version/minecraft_server.$latest_version.jar"
+                    local latest_version_url=$(jargroup_getServerJarUrl "$versions_target")
+                    if [[ -n "$latest_version_url" ]]; then
+                        local jar_url=$latest_version_url
 
                     fi
                 fi
